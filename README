@@ -1,0 +1,64 @@
+321CA Paris Cristian-Tanase
+
+Server.cpp
+-> retinem informatiile despre clienti in doua unordered_maps, unul care mapeaza
+socket-urile clientilor online la id-uri, iar celalalt id-urile tuturor clientilor
+care s-au conectat vreodata la server la informatiile despre acestia (aceasta implementare
+permite o eficienta buna a accesarii datelor O(1)).
+-> cream socketurile tcp si udp si il pasivizam pe cel tcp pentru a primi noi cereri
+de conectare de la clienti
+-> s-a folosit multiplexarea I/O pentru a distinge de pe ce fd se primesc informatiile
+-> serverul verifica daca primeste o comanda de la tastatura, daca este exit atunci se
+inchide si inchide toti clientii conectati. (orice alta comanda va genera un mesaj de eroare)
+-> daca se primeste un mesaj de la un client UDP, acesta este trimis tuturor clientilor TCP 
+online in acel moment care sunt abonati la el, altfel se stocheaza in cozile aferente fiecaruia
+(mesajele sunt convertite mai intai in formatul protocolului definit mai jos si apoi adaugate
+in coada)
+-> daca se primeste ceva pe fd tcp, atunci creez un nou socket pentru clientul conectat, 
+verific daca id-ul acestuia se afla in baza de date si daca are mesaje in coada (cazul in care
+i le trimit pe toate). Daca este un client nou, creez o noua inregistrare pentru acesta si il
+adaug in baza de date.
+-> daca se primeste o comanda pe alt fd, inseamna ca este o comanda de subscribe/unsubscribe la
+un anumit topic de la clientii tcp, caz in care verific daca acestia sunt deja subscribed/unsubscribed.
+-> daca clientul s-a deconectat, atunci ii sterg intrarea din mapa din clienti online, dar retin
+datele aferente acestuia. Un mesaj specific se printeaza.
+
+Subscriber.cpp
+-> cream socket-ul de comunicare tcp si incercam sa ne conectam apoi la sv cu id-ul primit ca parametru
+-> daca conectarea esueaza, clientul se inchide si se printeaza un mesaj specific.
+-> s-a folosit multiplexarea I/O pentru a distinge daca se primesc informatii de la sv sau de la
+tastatura
+-> daca s-a primit un mesaj de exit, inchid clientul
+-> daca s-a primit un mesaj de subscribe/unsubscribe, verific sa fie corect formulat si il trimit
+sv intr-o structura specifica
+-> daca primesc deva de la sv, faca recv la informatii intr-un buffer pana primesc tot si apoi
+le printez la stdout in formatul specificat de enunt.
+
+Definire protocol de comunicare:
+    Toate mesajele trimise de catre sv catre client au urmatorul format, definit
+in helpers.h.
+
+
+    struct __attribute__((packed)) tcp_message {
+    uint16_t port;
+    char ip[16];
+    char topic[51];
+    char data_type[11];
+    char data_payload[1501];
+};
+
+
+Protocolul functioneaza in modul urmator:
+    - Atat serverul cat si clientul stiu de la inceput marimea default a structurii.
+(marimea data de sizeof(struct tcp_message)).
+    - Stiind marimea de la inceput, serverul verifica dupa fiecare send cati bytes
+au fost trimisi si incearca apoi sa trimita restul de bytes  (diferenta dintre
+marimea structurii si ce a fost returnat de send), pana cand se trimite integral structura.
+    - Pe partea de primire a clientului, acesta face recv mai intai de marimea totala a
+structurii si daca vede ca primeste doar o parte din aceasta, face recv de diferenta, pana
+cand a fost primit tot payload-ul.
+
+
+Surse de erori checker:
+    -> Local, daca incercam sa rulez de mai multe ori checkerul intr-un interval de timp
+foarte scurt, se putea intampla ca sv sa nu porneasca deoarece portul inca era folosit.
